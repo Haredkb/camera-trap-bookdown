@@ -35,42 +35,75 @@ drive_auth(use_oob = TRUE, cache = TRUE)
 info <- drive_about()
 
 #Newly_uploaded_data folder is "1__cu4PCaLqcrIRTcbnjv1kcQeBoT03jI"
-folder_df = drive_ls(as_id("1__cu4PCaLqcrIRTcbnjv1kcQeBoT03jI"), shared_drive = "Hubbard Brook Rosi (HB WatER)")
-all_folder_Dir = folder_df[['name']][grepl("^W.*", folder_df[['name']])]  #folders that start with W. 
+#19DyxgtprkcqbDBuKmMioJg6B86oXDa9K
+#Stream Photos - superceded and newly upload: 12oN46qMczIh6zsQXxb1Dl9aVuH3a5p7a
+#folder_df = drive_ls(as_id("12oN46qMczIh6zsQXxb1Dl9aVuH3a5p7a"), shared_drive = "Hubbard Brook Rosi (HB WatER)") #recursive didnt work with shared_drive specfied but seemed to work after
 
+folder_df = drive_ls(as_id("1__cu4PCaLqcrIRTcbnjv1kcQeBoT03jI"), recursive = TRUE, type = "folder")
+
+not_empty <- lapply(folder_df$id, function(id){
+  googledrive::some_files(as_dribble(id))
+})
+
+folder_df$hasfiles <-  not_empty 
+
+all_folder_Dir <- folder_df %>% 
+  dplyr::filter(grepl("^W.*", name) | grepl("^M.*", name) )
+
+all_folder_Dir = all_folder_Dir[!duplicated(all_folder_Dir$name),]
+
+
+#all_folder_Dir = folder_df[['name']][grepl("^W.*", folder_df[['name']])]  #folders that start with W. 
+#all_folder_Dir = rbind(all_folder_Dir , folder_df[['name']][grepl("^M.*", folder_df[['name']])]) #add in "Main Hubbard" 
+saveRDS(all_folder_Dir, "all_folder_dir_list.RDS")#for speed when rerunning
+#all_folder_Dir <- readRDS("all_folder_dir_list.RDS")
+#all_folder_Dir <- as.vector(na.omit(as.vector(t(as.matrix(all_folder_Dir$name)))))
+#File
 #Desired Location for Renamed Images
-new_folder_df = drive_ls(as_id("19DyxgtprkcqbDBuKmMioJg6B86oXDa9K"), shared_drive = "Hubbard Brook Rosi (HB WatER)")
+new_folder_df = drive_ls(as_id("1d-I8MV_3pfFTEXCscRaCyg7NpMTMx5P6"), shared_drive = "Hubbard Brook Rosi (HB WatER)")
 
 #Set up tempfile
 temp <- tempfile(fileext = ".jpeg")
 
 # iterate through all folders available that start with W - the folder nomenclature has to be W then the number of the watershed "W#"
-mv_projectdir <- lapply(all_folder_Dir, function(folder_dir){ #testing "W9 GC Channel 11-6-20 thru 5-9-21"
+mv_projectdir <- lapply(all_folder_Dir$name, tryCatch(function(folder_dir){ #testing "W9 GC Channel 11-6-20 thru 5-9-21"
     print(folder_dir)
   #For shared google drive runs  
     folder_nm <- folder_dir #name
   #Find google drive id for folder with saved images
-    folder_id <- dplyr::filter(folder_df, name == folder_dir)%>%
+    folder_id <- dplyr::filter(all_folder_Dir, name == folder_dir)%>%
     as_id(id) #drive folder id
-    watershed_id = str_sub(folder_nm, 1, 2) #watershed based on first two characters
+    
+    files <- drive_ls(folder_id, recursive = TRUE)
+    
+    if(nrow(files) < 2){
+      return(NULL)
+    }
+    watershed_id = str_sub(folder_nm, 1, 2) #watershed based on first two characters (Ma will be Hubbard Brook Main Stem)
     print(watershed_id)
 
     #location where all images should be saved to
     new_img_folder <- dplyr::filter(new_folder_df, name == watershed_id)%>%
       as_id(id) #output folder id
     
-    watershed_id = tolower(str_sub(folder_nm, 1, 2))
     
+    watershed_id = tolower(str_sub(folder_nm, 1, 2))
     print(new_img_folder)
     
-  output <- rename_cameraimage(folder_dir = folder_id, new_dir = new_img_folder, googledrive_dir = TRUE)
+  output <-     tryCatch(
+        rename_cameraimage(folder_dir = folder_id, new_dir = new_img_folder, googledrive_dir = TRUE),
+                     error=function(e) next)
   # add column with the original folder name image came from
   output$folder_nm <- folder_nm
   #save on iteration, in case folder fails
   write.csv(output, paste0("rename_", folder_nm, ".csv"))
   return(output)
-  }
+},
+  
+                     error=function(e) next)
 )
+
+write.csv(output, paste0("renamed_folders_", Sys.Date(), "_", Sys.time(), ".csv")
 ```
 
 ## Renaming files using local folder directory 
@@ -87,6 +120,7 @@ image_path = "G:\\Shared drives\\Hubbard Brook Rosi (HB WatER)\\2_Camera Trap ph
 folders = list.dirs(image_path, recursive = FALSE)
 
 all_folder_Dir = folders[stringr::str_detect(basename(normalizePath(folders)), "W")] #only folders that start with W
+all_folder_Dir = rbind(all_folder_Dir , folders[stringr::str_detect(basename(normalizePath(folders)), "M")]) #add in "Main Hubbard" File
 new_img_dir  = "C:\\Users\\_HubbardBrook_\\CameraImages"
 
 mv_projectdir <- lapply(all_folder_Dir, function(folder_dir){

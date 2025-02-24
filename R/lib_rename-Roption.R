@@ -24,8 +24,15 @@ rename_cameraimage <- function(folder_dir, new_dir = folder_dir, googledrive_dir
     
     #list all images to be renamed from initiated folder
     file_ids <- if(nrow(drive_ls(folder_dir)) == 1) {
-      drive_ls(drive_ls(folder_dir)) } else drive_ls(folder_dir)  #twice as there is sometimes a SD card name as a subfolder. 
+      tryCatch(
+        drive_ls(folder_dir, type = "jpeg", recursive = TRUE),
+                     error=function(e) return(data.frame(rename = NA, original= gd_name, googledrive_id = gd_id, watershed = watershed_id)) #skip if error
+                   ) } else drive_ls(folder_dir, type = "jpeg")  #twice as there is sometimes a SD card name as a subfolder. 
     #having watershed id here, allows a double check, seems like it was not carrying over
+    new_locfiles <- drive_ls(new_dir, type = "jpeg")
+    
+    file_ids <-dplyr::anti_join(file_ids, new_locfiles, by = "name") #remove all files that already are there, only works if renamed already
+    
     watershed_id = tolower(str_sub(drive_reveal(folder_dir, "path")$name, 1, 2))
     
     rename_list <- lapply(file_ids$id, function(gd_id){
@@ -33,15 +40,21 @@ rename_cameraimage <- function(folder_dir, new_dir = folder_dir, googledrive_dir
       gd_name <- googledrive::as_dribble(gd_id)$name
       
       dl <- drive_download(gd_id, path = temp, overwrite = TRUE)
+      
       datetime_taken = str_replace(str_remove_all(read_exif(dl$local_path)$CreateDate, ":"), " ", "_")
       
       new_filename = paste0("Hbwtr_", watershed_id, "_", datetime_taken, ".jpg")
       
-      #move and rename
-      file <- drive_mv(gd_id, path = new_dir, name = new_filename)
+      if(!new_filename %in% file_ids$name){
       
-      #output dataframe with how renamed for review                 
-      output <- data.frame(rename = new_filename, original= gd_name, googledrive_id = gd_id, watershed = watershed_id) 
+      if(!file.exists(file.path(new_dir, new_filename))){ #this doesnt seem to work... maybe due to gd_id?
+            #move and rename  
+            file <- drive_mv(gd_id, path = new_dir, name = new_filename)
+            
+            #output dataframe with how renamed for review                 
+            output <- data.frame(rename = new_filename, original= gd_name, googledrive_id = gd_id, watershed = watershed_id) }}else{
+              data.frame(rename = NA, original= gd_name, googledrive_id = gd_id, watershed = watershed_id )
+      }
     })
   }else{ #local file structure
     
